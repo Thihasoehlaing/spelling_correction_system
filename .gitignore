@@ -1,0 +1,33 @@
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# PyInstaller build directories
+build/
+dist/
+*.spec
+
+# Virtual environment
+venv/
+env/
+.venv/
+.env/
+
+# NLTK data downloads (optional if bundled)
+nltk_data/
+
+# OS-specific junk
+.DS_Store
+Thumbs.db
+
+# VS Code settings (optional)
+.vscode/
+
+# Logs or temp files
+*.log
+*.tmp
+
+# Compiled binary
+*.exe
