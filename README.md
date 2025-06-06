@@ -17,7 +17,14 @@ A smart, GUI-based spelling correction application built with **Python** and **P
 - 🎨 Color-coded highlights:
   - 🔴 Red = Non-word
   - 🟠 Orange = Real-word/contextual errors
+  - 🟢 Green = Grammer errors
 - 🔍 Dictionary viewer with search functionality
+
+---
+
+## 🖼️ Screenshot
+
+![App Screenshot](screenshot.png)
 
 ---
 
@@ -110,23 +117,3 @@ The docotor gave me a perscription.
 Thiha Soe Hlaing  
 Asia Pacific University (APU), NLP Project  
 2025
-
----
-
-## 📜 License
-
-MIT License (or based on institution rules)
-
-  - ✅ POS tagging
-- 🔍 Dictionary viewer with search
-- 🎨 Color-coded error highlighting:
-  - 🔴 Red underline = non-word errors
-  - 🟠 Orange underline = real-word/contextual errors
-- 💡 Displays top suggestions in a list panel
-- 🪄 Clean, popup-free interface
-
----
-
-## 🖼️ Screenshot
-
-![App Screenshot](screenshot.png)
