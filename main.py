@@ -9,71 +9,73 @@ from PySide6.QtCore import Qt
 import nltk
 from nltk.corpus import brown, words
 from nltk import word_tokenize, bigrams, trigrams
-from collections import Counter
 from spellchecker import SpellChecker
-import spacy
-from pattern.en import conjugate, PRESENT, PAST, SG, PL
+from collections import Counter
 
-# === NLP Setup ===
+import spacy
+
+# NLTK setup
 nltk.download('punkt')
 nltk.download('brown')
 nltk.download('words')
+nltk.download('averaged_perceptron_tagger')
+
+# Load NLP models
+nlp = spacy.load("en_core_web_sm")
+spell = SpellChecker()
+
+# Corpus and language models
 corpus_words = [w.lower() for w in brown.words() if w.isalpha()]
-unigrams = Counter(corpus_words)
+dictionary = set(words.words()) | set(corpus_words)
 bigrams_c = Counter(bigrams(corpus_words))
 trigrams_c = Counter(trigrams(corpus_words))
-dictionary = set(w.lower() for w in words.words()) | set(w.lower() for w in brown.words() if w.isalpha())
-
-spell = SpellChecker()
-nlp = spacy.load("en_core_web_sm")
 
 def trigram_prob(w1, w2, w3):
     return trigrams_c[(w1, w2, w3)] / bigrams_c[(w1, w2)] if bigrams_c[(w1, w2)] > 0 else 0
 
 def check_text_advanced(text):
-    errors = {}
-    tokens = word_tokenize(text.lower())
     doc = nlp(text)
+    tokens = [t.text for t in doc]
+    lower_tokens = [t.lower() for t in tokens]
+    errors = {}
 
     for i, token in enumerate(doc):
-        word = token.text.lower()
-
+        word = token.text
         if not word.isalpha():
             continue
 
-        # 1. Non-word spelling errors
-        if word not in dictionary:
-            suggestions = list(spell.candidates(word))
-            errors[word] = (suggestions[:3], "non-word")
-            continue
+        lw = word.lower()
 
-        # 2. Real-word misuse detection using trigram
-        if i >= 2:
-            w1, w2 = tokens[i - 2], tokens[i - 1]
-            actual_score = trigram_prob(w1, w2, word)
-            candidates = spell.known(spell.edit_distance_1(word))
+        # 1. Non-word
+        if lw not in dictionary:
+            suggestions = list(spell.candidates(lw))[:3]
+            errors[lw] = (suggestions, "non-word")
+
+        # 2. Real-word misuse (trigram)
+        elif i >= 2:
+            w1, w2 = lower_tokens[i - 2], lower_tokens[i - 1]
+            actual_score = trigram_prob(w1, w2, lw)
+            candidates = spell.known(spell.edit_distance_1(lw))
             ranked = sorted(
-                [w for w in candidates if w != word and w in dictionary],
+                [w for w in candidates if w != lw],
                 key=lambda w: trigram_prob(w1, w2, w),
                 reverse=True
             )
             if ranked and trigram_prob(w1, w2, ranked[0]) > actual_score * 5:
-                errors[word] = ([ranked[0]], "real-word")
+                errors[lw] = ([ranked[0]], "real-word")
 
-        # 3. Grammar errors: subject-verb agreement + tense
-        if token.pos_ == "VERB" and i > 0:
-            subject = doc[i - 1]
-            if subject.pos_ in ["NOUN", "PRON"]:
-                expected = conjugate(token.lemma_, tense=PRESENT, number=SG)
-                if subject.tag_ in ['PRP', 'NN', 'NNP'] and word != expected:
-                    errors[word] = ([expected], "grammar")
+        # 3. Grammar & tense
+        if token.tag_ in ["VBP", "VBZ", "VBD", "VB"] and token.head.pos_ in ["NOUN", "PRON"]:
+            expected = token._.inflect(token.tag_)
+            if expected and expected.lower() != word.lower():
+                errors[lw] = ([expected], "grammar")
 
     return errors
 
-# === GUI Components ===
+# === GUI ===
 class CustomTextEdit(QTextEdit):
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self):
+        super().__init__()
         self.suggestions_map = {}
 
     def set_suggestions_map(self, data):
@@ -85,9 +87,8 @@ class CustomTextEdit(QTextEdit):
         word = cursor.selectedText().lower()
 
         if word in self.suggestions_map:
-            suggestions, _ = self.suggestions_map[word]
             menu = QMenu(self)
-            for suggestion in suggestions:
+            for suggestion in self.suggestions_map[word][0]:
                 action = QAction(suggestion, self)
                 action.triggered.connect(lambda _, s=suggestion, c=cursor: self.replace_word(c, s))
                 menu.addAction(action)
@@ -104,8 +105,8 @@ class CustomTextEdit(QTextEdit):
 class SpellCheckerApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("NLP Spelling & Grammar Correction System")
-        self.setFixedSize(850, 550)
+        self.setWindowTitle("Spelling Correction System")
+        self.setFixedSize(900, 600)
 
         self.text_edit = CustomTextEdit()
         self.text_edit.setPlaceholderText("Write up to 500 characters...")
@@ -128,22 +129,22 @@ class SpellCheckerApp(QWidget):
         self.dictionary_list.addItems(self.dictionary_words)
 
         # Layouts
-        left_layout = QVBoxLayout()
-        left_layout.addWidget(self.check_button)
-        left_layout.addWidget(self.clear_button)
-        left_layout.addWidget(self.text_edit)
-        left_layout.addWidget(QLabel("Suggestions"))
-        left_layout.addWidget(self.result_list)
+        left = QVBoxLayout()
+        left.addWidget(self.check_button)
+        left.addWidget(self.clear_button)
+        left.addWidget(self.text_edit)
+        left.addWidget(QLabel("Suggestions"))
+        left.addWidget(self.result_list)
 
-        right_layout = QVBoxLayout()
-        right_layout.addWidget(QLabel("Dictionary"))
-        right_layout.addWidget(self.search_input)
-        right_layout.addWidget(self.dictionary_list)
+        right = QVBoxLayout()
+        right.addWidget(QLabel("Dictionary"))
+        right.addWidget(self.search_input)
+        right.addWidget(self.dictionary_list)
 
-        main_layout = QHBoxLayout()
-        main_layout.addLayout(left_layout, 2)
-        main_layout.addLayout(right_layout, 1)
-        self.setLayout(main_layout)
+        main = QHBoxLayout()
+        main.addLayout(left, 2)
+        main.addLayout(right, 1)
+        self.setLayout(main)
 
     def limit_text(self):
         text = self.text_edit.toPlainText()
@@ -165,36 +166,34 @@ class SpellCheckerApp(QWidget):
             return
 
         errors = check_text_advanced(text)
-        self.highlight_errors(errors)
         self.text_edit.set_suggestions_map(errors)
+        self.highlight_errors(errors)
 
         if not errors:
             self.result_list.addItem("No errors found.")
         else:
-            for word, (suggestions, err_type) in errors.items():
-                self.result_list.addItem(f"{word} ({err_type}) ➜ {', '.join(suggestions)}")
+            for word, (sugs, kind) in errors.items():
+                self.result_list.addItem(f"{word} ({kind}) ➜ {', '.join(sugs)}")
 
     def highlight_errors(self, errors):
         cursor = self.text_edit.textCursor()
         cursor.select(QTextCursor.Document)
-        cursor.setCharFormat(QTextCharFormat())
+        cursor.setCharFormat(QTextCharFormat())  # clear
 
-        text = self.text_edit.toPlainText()
-        text_lower = text.lower()
-
-        for word, (_, err_type) in errors.items():
+        text = self.text_edit.toPlainText().lower()
+        for word, (_, kind) in errors.items():
             fmt = QTextCharFormat()
             fmt.setUnderlineStyle(QTextCharFormat.SpellCheckUnderline)
-            if err_type == "non-word":
+            if kind == "non-word":
                 fmt.setUnderlineColor(QColor("red"))
-            elif err_type == "real-word":
+            elif kind == "real-word":
                 fmt.setUnderlineColor(QColor("blue"))
-            elif err_type == "grammar":
+            elif kind == "grammar":
                 fmt.setUnderlineColor(QColor("green"))
 
             start = 0
             while True:
-                start = text_lower.find(word, start)
+                start = text.find(word, start)
                 if start == -1:
                     break
                 cursor.setPosition(start)
@@ -204,11 +203,11 @@ class SpellCheckerApp(QWidget):
 
     def search_dictionary(self):
         query = self.search_input.text().lower()
+        filtered = [w for w in self.dictionary_words if query in w]
         self.dictionary_list.clear()
-        filtered = [word for word in self.dictionary_words if query in word]
         self.dictionary_list.addItems(filtered)
 
-# === Run the App ===
+# Run
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = SpellCheckerApp()
