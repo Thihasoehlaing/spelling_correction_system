@@ -8,71 +8,69 @@ from PySide6.QtCore import Qt
 
 import nltk
 from nltk.corpus import brown, words
-from nltk import word_tokenize, bigrams, trigrams, pos_tag
-from spellchecker import SpellChecker
+from nltk import word_tokenize, bigrams, trigrams
 from collections import Counter
+from spellchecker import SpellChecker
+import spacy
+from pattern.en import conjugate, PRESENT, PAST, SG, PL
 
-# Download required NLTK data
+# === NLP Setup ===
 nltk.download('punkt')
 nltk.download('brown')
 nltk.download('words')
-nltk.download('averaged_perceptron_tagger')
-
-# NLP Model Setup
 corpus_words = [w.lower() for w in brown.words() if w.isalpha()]
 unigrams = Counter(corpus_words)
 bigrams_c = Counter(bigrams(corpus_words))
 trigrams_c = Counter(trigrams(corpus_words))
-
-dictionary = set(w.lower() for w in words.words() if w.isalpha())
-dictionary.update(w.lower() for w in brown.words() if w.isalpha())
+dictionary = set(w.lower() for w in words.words()) | set(w.lower() for w in brown.words() if w.isalpha())
 
 spell = SpellChecker()
+nlp = spacy.load("en_core_web_sm")
 
 def trigram_prob(w1, w2, w3):
     return trigrams_c[(w1, w2, w3)] / bigrams_c[(w1, w2)] if bigrams_c[(w1, w2)] > 0 else 0
 
-def check_text_nlp(text):
-    tokens = word_tokenize(text.lower())
-    tagged = pos_tag(tokens)
+def check_text_advanced(text):
     errors = {}
+    tokens = word_tokenize(text.lower())
+    doc = nlp(text)
 
-    for i, (word, tag) in enumerate(tagged):
+    for i, token in enumerate(doc):
+        word = token.text.lower()
+
         if not word.isalpha():
             continue
 
-        # Non-word error
+        # 1. Non-word spelling errors
         if word not in dictionary:
-            suggestions = spell.candidates(word)
-            errors[word] = (list(suggestions)[:3], "non-word")
+            suggestions = list(spell.candidates(word))
+            errors[word] = (suggestions[:3], "non-word")
+            continue
 
-        # Real-word misuse detection
-        elif i >= 2:
+        # 2. Real-word misuse detection using trigram
+        if i >= 2:
             w1, w2 = tokens[i - 2], tokens[i - 1]
             actual_score = trigram_prob(w1, w2, word)
-
             candidates = spell.known(spell.edit_distance_1(word))
             ranked = sorted(
-                [w for w in candidates if w in dictionary and w != word and unigrams[w] > 3],
+                [w for w in candidates if w != word and w in dictionary],
                 key=lambda w: trigram_prob(w1, w2, w),
                 reverse=True
             )
+            if ranked and trigram_prob(w1, w2, ranked[0]) > actual_score * 5:
+                errors[word] = ([ranked[0]], "real-word")
 
-            if ranked:
-                best = ranked[0]
-                best_score = trigram_prob(w1, w2, best)
-                if actual_score < 0.00005 and best_score > actual_score * 8 and unigrams[word] < 300:
-                    errors[word] = ([best], "real-word")
-
-        # Grammar check
-        if i >= 2:
-            prev_word, prev_tag = tagged[i - 1]
-            prev_prev_word, prev_prev_tag = tagged[i - 2]
-            if prev_prev_tag == 'PRP' and prev_tag == 'TO' and tag in ['VB', 'VBP'] and word.endswith('s') is False:
-                errors[word] = ([word + 's'], "grammar")
+        # 3. Grammar errors: subject-verb agreement + tense
+        if token.pos_ == "VERB" and i > 0:
+            subject = doc[i - 1]
+            if subject.pos_ in ["NOUN", "PRON"]:
+                expected = conjugate(token.lemma_, tense=PRESENT, number=SG)
+                if subject.tag_ in ['PRP', 'NN', 'NNP'] and word != expected:
+                    errors[word] = ([expected], "grammar")
 
     return errors
 
+# === GUI Components ===
 class CustomTextEdit(QTextEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -106,7 +104,7 @@ class CustomTextEdit(QTextEdit):
 class SpellCheckerApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Spelling Correction System")
+        self.setWindowTitle("NLP Spelling & Grammar Correction System")
         self.setFixedSize(850, 550)
 
         self.text_edit = CustomTextEdit()
@@ -129,6 +127,7 @@ class SpellCheckerApp(QWidget):
         self.dictionary_words = sorted(dictionary)
         self.dictionary_list.addItems(self.dictionary_words)
 
+        # Layouts
         left_layout = QVBoxLayout()
         left_layout.addWidget(self.check_button)
         left_layout.addWidget(self.clear_button)
@@ -165,7 +164,7 @@ class SpellCheckerApp(QWidget):
             QMessageBox.warning(self, "Empty", "Please enter some text.")
             return
 
-        errors = check_text_nlp(text)
+        errors = check_text_advanced(text)
         self.highlight_errors(errors)
         self.text_edit.set_suggestions_map(errors)
 
@@ -209,6 +208,7 @@ class SpellCheckerApp(QWidget):
         filtered = [word for word in self.dictionary_words if query in word]
         self.dictionary_list.addItems(filtered)
 
+# === Run the App ===
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = SpellCheckerApp()
