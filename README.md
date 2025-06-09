@@ -1,119 +1,74 @@
-# 📝 Spelling Correction System
+# ✨ Spelling Correction System (NLP Assignment)
 
-A smart, GUI-based spelling correction application built with **Python** and **PySide6**, capable of detecting and suggesting corrections for:
-- ✅ Non-word spelling mistakes (e.g., `docotor` → `doctor`)
-- ✅ Real-word/contextual errors using trigram probabilities (e.g., `sea` → `see` in "I want to sea a movie")
+A GUI-based NLP application that detects and corrects **non-word**, **real-word**, and **grammar errors** using advanced natural language processing techniques and a domain-rich corpus.
 
----
+## 🚀 Features
 
-## 🔧 Features
+- ✅ **Non-word error detection** (e.g., `sientist` → `scientist`)
+- ✅ **Real-word misuse detection** using **trigram context probability** (e.g., `sea` → `see`)
+- ✅ **Grammar checking** (e.g., `He want` → `He wants`) using **spaCy POS tagging**
+- ✅ **GUI interface** built with **PySide6**
+- ✅ **Interactive word suggestions** via right-click context menu
+- ✅ **Integrated dictionary view** with search and filter
+- ✅ Supports **tense and subject-verb agreement checks** (present, past)
 
-- ✍️ Simple GUI text editor (500-character limit)
-- 📚 Uses NLTK's Brown Corpus (100k+ words)
-- 🧠 Supports:
-  - Minimum Edit Distance (via `pyspellchecker`)
-  - Bigram and Trigram language models
-  - POS tagging for advanced detection
-- 🎨 Color-coded highlights:
-  - 🔴 Red = Non-word
-  - 🟠 Orange = Real-word/contextual errors
-  - 🟢 Green = Grammer errors
-- 🔍 Dictionary viewer with search functionality
+## 🧠 Techniques Used
 
----
+| Error Type    | Technique(s) Used                                      |
+|---------------|--------------------------------------------------------|
+| Non-word      | `pyspellchecker`, NLTK `words`, edit distance          |
+| Real-word     | NLTK `bigrams`, `trigrams`, context-aware probability  |
+| Grammar       | spaCy POS tagging and dependency parsing (`nsubj`, `aux`) |
 
-## 🖼️ Screenshot
+## 🖥️ GUI Preview
 
-![App Screenshot](screenshot.png)
+- ✍️ Input field with 500-character limit
+- 🖱️ Right-click on underlined words to see suggestions
+- 🔴 Red underline: Non-word error  
+- 🔵 Blue underline: Real-word misuse  
+- 🟢 Green underline: Grammar error  
+- 📚 Right panel: Full searchable dictionary list
 
----
 
-## 📂 requirements.txt
+## 🧪 Sample Input
 
+```text
+He want to become a great sientist. Every day, he reserches new ideas about human behavior and medcine. 
+Yesterday, he went to the lab to sea the results of his experiment. His findings were cleer and significant, 
+but he forgot to write down the resluts.
 ```
-PySide6
-nltk
-pyspellchecker
-```
-
----
 
 ## 🛠️ Installation
-
-### ✅ Requirements
-
-Install required packages:
-
+### 1. Clone the repository
 ```bash
-pip install -r requirements.txt
+git clone git@github.com:Thihasoehlaing/spelling-correction-system.git
+cd spelling-correction-system
 ```
 
----
-
-## ⬇️ First-Time NLTK Setup
-
-Ensure these datasets are downloaded before first use:
-```python
-import nltk
-nltk.download('punkt')
-nltk.download('words')
-nltk.download('brown')
-nltk.download('averaged_perceptron_tagger')
+### 2. Install dependencies
+Make sure you have Python 3.9–3.11. Python 3.12+ is not supported by some libraries.
+```bash
+pip install nltk spacy PySide6 pyspellchecker 
+python -m nltk.downloader punkt brown words averaged_perceptron_tagger
+python -m spacy download en_core_web_sm
 ```
 
----
-
-## ▶️ Run the App
-
+### 3. Run the application
 ```bash
 python main.py
 ```
 
----
+## 📦 Requirements
+- [NLTK](https://www.nltk.org/)
+- [spaCy](https://spacy.io/)
+- [pyspellchecker](https://pypi.org/project/pyspellchecker/)
+- [PySide6](https://pypi.org/project/PySide6/)
 
-## 🛠️ Build Windows `.exe` (Standalone)
+## 📚 References
+- NLTK Corpus & Language Models
 
-Create a one-file Windows app with:
-```bash
-pip install pyinstaller
-pyinstaller --onefile --windowed main.py
-```
+- spaCy POS Tagging
 
-The `.exe` will be inside the `dist/` folder.
+- PySpellChecker for edit distance
 
----
-
-## 📚 Corpus & Techniques Used
-
-- ✅ **Corpus**:
-  - NLTK's Brown Corpus (contains over 1 million words)
-  - Built-in dictionary from `nltk.corpus.words`
-
-- 🧠 **Techniques**:
-  - Minimum Edit Distance (for non-word detection)
-  - Trigram language modeling (for real-word/contextual errors)
-  - POS tagging with NLTK
-  - Candidate ranking based on trigram probability
-
----
-
-## 🧪 Example Test Inputs
-
-```
-I want to sea a movie.
-Graffe is a strange animal.
-The docotor gave me a perscription.
-```
-
-✅ Output: Underlined errors with suggestions like:
-- sea ➜ see
-- graffe ➜ giraffe
-- docotor ➜ doctor
-
----
-
-## 👨‍💻 Author
-
-Thiha Soe Hlaing  
-Asia Pacific University (APU), NLP Project  
-2025
+- PySide6 for desktop GUI
