@@ -8,67 +8,86 @@ from PySide6.QtCore import Qt
 
 import nltk
 from nltk.corpus import brown, words
-from nltk import word_tokenize, bigrams, trigrams
+from nltk import bigrams, trigrams
 from spellchecker import SpellChecker
 from collections import Counter
-
 import spacy
 
-# NLTK setup
+# Download required NLTK data
 nltk.download('punkt')
 nltk.download('brown')
 nltk.download('words')
 nltk.download('averaged_perceptron_tagger')
 
-# Load NLP models
+# NLP setup
 nlp = spacy.load("en_core_web_sm")
 spell = SpellChecker()
 
-# Corpus and language models
+# Corpus prep
 corpus_words = [w.lower() for w in brown.words() if w.isalpha()]
 dictionary = set(words.words()) | set(corpus_words)
 bigrams_c = Counter(bigrams(corpus_words))
 trigrams_c = Counter(trigrams(corpus_words))
 
-def trigram_prob(w1, w2, w3):
-    return trigrams_c[(w1, w2, w3)] / bigrams_c[(w1, w2)] if bigrams_c[(w1, w2)] > 0 else 0
-
 def check_text_advanced(text):
     doc = nlp(text)
-    tokens = [t.text for t in doc]
-    lower_tokens = [t.lower() for t in tokens]
+    tokens = [t for t in doc if t.is_alpha]
+    lower_tokens = [t.text.lower() for t in tokens]
     errors = {}
 
-    for i, token in enumerate(doc):
-        word = token.text
-        if not word.isalpha():
+    # === Real-word misuse detection ===
+    for i in range(1, len(tokens) - 1):  # CENTERED on actual_token
+        w1, w2, w3 = lower_tokens[i - 1], lower_tokens[i], lower_tokens[i + 1]
+        actual_token = tokens[i]
+        actual_word = actual_token.text
+        actual_pos = actual_token.pos_
+
+        if not actual_word.isalpha() or w2 not in dictionary:
             continue
 
-        lw = word.lower()
+        if actual_pos in ["PRON", "PROPN", "DET", "NUM"]:
+            continue
 
-        # 1. Non-word
-        if lw not in dictionary:
+        trigram_count_actual = trigrams_c[(w1, w2, w3)]
+        if trigram_count_actual > 0:
+            continue
+
+        candidates = spell.known(spell.edit_distance_1(w2))
+        candidates = [w for w in candidates if w != w2 and w in dictionary]
+
+        for candidate in candidates:
+            trigram_count_candidate = trigrams_c[(w1, candidate, w3)]
+            if trigram_count_candidate >= 1:
+                cand_doc = nlp(candidate)
+                if cand_doc and cand_doc[0].pos_ == actual_pos:
+                    if cand_doc[0].lemma_ == actual_token.lemma_:
+                        continue
+                    errors[actual_word.lower()] = ([candidate], "real-word")
+                    break
+
+
+
+    # === Non-word detection ===
+    for token in tokens:
+        word = token.text
+        lw = word.lower()
+        if lw not in dictionary and lw not in errors:
             suggestions = list(spell.candidates(lw))[:3]
             errors[lw] = (suggestions, "non-word")
 
-        # 2. Real-word misuse (trigram)
-        elif i >= 2:
-            w1, w2 = lower_tokens[i - 2], lower_tokens[i - 1]
-            actual_score = trigram_prob(w1, w2, lw)
-            candidates = spell.known(spell.edit_distance_1(lw))
-            ranked = sorted(
-                [w for w in candidates if w != lw],
-                key=lambda w: trigram_prob(w1, w2, w),
-                reverse=True
-            )
-            if ranked and trigram_prob(w1, w2, ranked[0]) > actual_score * 5:
-                errors[lw] = ([ranked[0]], "real-word")
+    # === Grammar rule detection (subject-verb) ===
+    for token in doc:
+        word = token.text
+        lw = word.lower()
+        if not word.isalpha() or lw in errors:
+            continue
 
-        # 3. Grammar & tense
         if token.tag_ in ["VBP", "VBZ", "VBD", "VB"] and token.head.pos_ in ["NOUN", "PRON"]:
-            expected = token._.inflect(token.tag_)
-            if expected and expected.lower() != word.lower():
-                errors[lw] = ([expected], "grammar")
+            subj = token.head.text.lower()
+            if subj in ["he", "she", "it"] and token.tag_ == "VBP":
+                errors[lw] = ([token.lemma_ + 's'], "grammar")
+            elif subj in ["they", "we", "i"] and token.tag_ == "VBZ":
+                errors[lw] = ([token.lemma_], "grammar")
 
     return errors
 
@@ -119,16 +138,13 @@ class SpellCheckerApp(QWidget):
         self.clear_button.clicked.connect(self.clear_text)
 
         self.result_list = QListWidget()
-
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search dictionary...")
         self.search_input.textChanged.connect(self.search_dictionary)
-
         self.dictionary_list = QListWidget()
         self.dictionary_words = sorted(dictionary)
         self.dictionary_list.addItems(self.dictionary_words)
 
-        # Layouts
         left = QVBoxLayout()
         left.addWidget(self.check_button)
         left.addWidget(self.clear_button)
@@ -178,9 +194,11 @@ class SpellCheckerApp(QWidget):
     def highlight_errors(self, errors):
         cursor = self.text_edit.textCursor()
         cursor.select(QTextCursor.Document)
-        cursor.setCharFormat(QTextCharFormat())  # clear
+        cursor.setCharFormat(QTextCharFormat())  # Clear formatting
 
-        text = self.text_edit.toPlainText().lower()
+        text_original = self.text_edit.toPlainText()
+        text_lower = text_original.lower()
+
         for word, (_, kind) in errors.items():
             fmt = QTextCharFormat()
             fmt.setUnderlineStyle(QTextCharFormat.SpellCheckUnderline)
@@ -193,7 +211,7 @@ class SpellCheckerApp(QWidget):
 
             start = 0
             while True:
-                start = text.find(word, start)
+                start = text_lower.find(word, start)
                 if start == -1:
                     break
                 cursor.setPosition(start)
@@ -207,7 +225,7 @@ class SpellCheckerApp(QWidget):
         self.dictionary_list.clear()
         self.dictionary_list.addItems(filtered)
 
-# Run
+# Run the app
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = SpellCheckerApp()
