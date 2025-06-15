@@ -55,6 +55,8 @@ def check_text_advanced(text):
         candidates = spell.known(spell.edit_distance_1(w2))
         candidates = [w for w in candidates if w != w2 and w in dictionary]
 
+        candidates.sort(key=lambda c: trigrams_c[(w1, c, w3)], reverse=True)
+
         for candidate in candidates:
             trigram_count_candidate = trigrams_c[(w1, candidate, w3)]
             if trigram_count_candidate >= 1:
@@ -65,8 +67,6 @@ def check_text_advanced(text):
                     errors[actual_word.lower()] = ([candidate], "real-word")
                     break
 
-
-
     # === Non-word detection ===
     for token in tokens:
         word = token.text
@@ -76,18 +76,24 @@ def check_text_advanced(text):
             errors[lw] = (suggestions, "non-word")
 
     # === Grammar rule detection (subject-verb) ===
+    singular_subjs = {"he", "she", "it", "this", "that"}
+    plural_subjs = {"they", "we", "i", "you", "these", "those"}
     for token in doc:
         word = token.text
         lw = word.lower()
         if not word.isalpha() or lw in errors:
             continue
 
-        if token.tag_ in ["VBP", "VBZ", "VBD", "VB"] and token.head.pos_ in ["NOUN", "PRON"]:
-            subj = token.head.text.lower()
-            if subj in ["he", "she", "it"] and token.tag_ == "VBP":
-                errors[lw] = ([token.lemma_ + 's'], "grammar")
-            elif subj in ["they", "we", "i"] and token.tag_ == "VBZ":
-                errors[lw] = ([token.lemma_], "grammar")
+        # Only target verbs
+        if token.tag_ in ["VBP", "VBZ"] and token.dep_ == "ROOT":
+            for child in token.children:
+                if child.dep_ == "nsubj" and child.pos_ in ["PRON", "NOUN"]:
+                    subj = child.text.lower()
+
+                    if subj in singular_subjs and token.tag_ == "VBP":
+                        errors[lw] = ([token.lemma_ + "s"], "grammar")
+                    elif subj in plural_subjs and token.tag_ == "VBZ":
+                        errors[lw] = ([token.lemma_], "grammar")
 
     return errors
 
